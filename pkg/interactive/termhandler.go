@@ -45,6 +45,10 @@ func (i *interactive) handleInput(in []byte) {
 			time.Sleep(500 * time.Millisecond)
 			i.printBanner()
 		} else {
+			// Exiting interactive mode: flush any results that were
+			// buffered while the WAF pause was active so the user sees
+			// them before new requests start printing.
+			i.Job.Output.FlushPendingResults()
 			i.Job.Resume()
 		}
 	} else {
@@ -55,6 +59,9 @@ func (i *interactive) handleInput(in []byte) {
 			i.printHelp()
 		case "resume":
 			i.paused = false
+			// Flush buffered WAF-pause results before resuming so the user
+			// sees the backlog before new output starts.
+			i.Job.Output.FlushPendingResults()
 			i.Job.Resume()
 		case "restart":
 			i.Job.Reset(false)

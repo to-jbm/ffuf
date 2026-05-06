@@ -167,12 +167,11 @@ func (j *Job) CancelWAFBackoff() {
 	}
 	j.wafMu.Unlock()
 	if wasPaused {
-		// Make sure the output flag is cleared even if doWAFPause has
-		// not yet observed the cancel (e.g. when called from the Ctrl-C
-		// monitor before the select returns).
+		// Clear the output flag so results arriving after we unblock
+		// workers will print directly to stdout. We intentionally do
+		// NOT flush pending prints here; they are held until the user
+		// exits interactive mode (see termhandler.go) so the screen
+		// stays clean while the user is interacting.
 		j.Config.SetWAFBackingOff(false)
-		if j.Output != nil {
-			j.Output.FlushPendingResults()
-		}
 	}
 }

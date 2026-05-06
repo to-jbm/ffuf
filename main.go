@@ -219,13 +219,36 @@ func main() {
 		os.Exit(0)
 	}
 
+	if opts.General.ConfigFile != "" {
+		opts, err = ffuf.ReadConfig(opts.General.ConfigFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Encoutered error(s): %s\n", err)
+			Usage()
+			fmt.Fprintf(os.Stderr, "Encoutered error(s): %s\n", err)
+			os.Exit(1)
+		}
+		// Reset the flag package state
+		flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+		// Re-parse the cli options
+		opts = ParseFlags(opts)
+	}
+
+	autoDebugLog := opts.Output.DebugLog == ""
+	autoOutputFile := opts.Output.OutputFile == ""
+	if autoDebugLog || autoOutputFile {
+		if err := os.MkdirAll(ffuf.DefaultOutputDir, 0750); err != nil {
+			fmt.Fprintf(os.Stderr, "Could not create default output directory %q: %s\n", ffuf.DefaultOutputDir, err)
+			os.Exit(1)
+		}
+	}
+
 	// If the user did not supply -debug-log, derive a default name from
 	// the URL slug and start time so error logs are always captured.
 	// This must run AFTER potential config-file / -request handling has
 	// populated opts.HTTP.URL. We fall back to a blank URL slug if none
 	// was provided yet (e.g. -request-only configs); ConfigFromOptions
 	// will report missing -u in that case anyway.
-	if opts.Output.DebugLog == "" {
+	if autoDebugLog {
 		opts.Output.DebugLog = ffuf.AutoDebugLogFilename(opts.HTTP.URL, startTime)
 	}
 	if len(opts.Output.DebugLog) != 0 {
@@ -242,20 +265,6 @@ func main() {
 	}
 	if optserr != nil {
 		log.Printf("Error while opening default config file: %s", optserr)
-	}
-
-	if opts.General.ConfigFile != "" {
-		opts, err = ffuf.ReadConfig(opts.General.ConfigFile)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Encoutered error(s): %s\n", err)
-			Usage()
-			fmt.Fprintf(os.Stderr, "Encoutered error(s): %s\n", err)
-			os.Exit(1)
-		}
-		// Reset the flag package state
-		flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
-		// Re-parse the cli options
-		opts = ParseFlags(opts)
 	}
 
 	// Set up Config struct
@@ -281,7 +290,7 @@ func main() {
 	// save. ConfigFromOptions only copies OutputFormat into conf when
 	// OutputFile is non-empty, so we also have to mirror it here in the
 	// auto case (default "json").
-	if conf.OutputFile == "" {
+	if autoOutputFile {
 		fmtOut := opts.Output.OutputFormat
 		if fmtOut == "" {
 			fmtOut = "json"

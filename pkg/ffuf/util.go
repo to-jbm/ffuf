@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -126,10 +127,15 @@ func StrInSlice(key string, slice []string) bool {
 	return false
 }
 
+// DefaultOutputDir is where auto-generated -o and -debug-log files are placed.
+// User-provided output paths are never rewritten to this directory.
+const DefaultOutputDir = "ffuf_out"
+
 // SlugifyURL turns a URL into a filesystem-safe slug. It strips the scheme,
-// replaces every non-alphanumeric run with a single underscore, trims leading
-// and trailing underscores, and caps the length at 100 characters. If the
-// input slugifies to an empty string, "ffuf" is returned.
+// preserves dots (so domains remain readable), replaces every other
+// non-alphanumeric run with a single underscore, trims leading and trailing
+// underscores, and caps the length at 100 characters. If the input slugifies
+// to an empty string, "ffuf" is returned.
 func SlugifyURL(rawURL string) string {
 	s := rawURL
 	if i := strings.Index(s, "://"); i != -1 {
@@ -139,7 +145,7 @@ func SlugifyURL(rawURL string) string {
 	b.Grow(len(s))
 	prevUnderscore := true
 	for _, r := range s {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' {
 			b.WriteRune(r)
 			prevUnderscore = false
 		} else {
@@ -174,16 +180,16 @@ func AutoOutputFilename(rawURL string, t time.Time, format string) string {
 	base := SlugifyURL(rawURL) + "_" + FormatStartTime(t)
 	switch format {
 	case "", "all":
-		return base
+		return filepath.Join(DefaultOutputDir, base)
 	default:
-		return base + "." + format
+		return filepath.Join(DefaultOutputDir, base+"."+format)
 	}
 }
 
 // AutoDebugLogFilename returns the default value for -debug-log when the user
 // has not provided one.
 func AutoDebugLogFilename(rawURL string, t time.Time) string {
-	return SlugifyURL(rawURL) + "_errors_" + FormatStartTime(t) + ".log"
+	return filepath.Join(DefaultOutputDir, SlugifyURL(rawURL)+"_errors_"+FormatStartTime(t)+".log")
 }
 
 func mergeMaps(m1 map[string][]string, m2 map[string][]string) map[string][]string {
