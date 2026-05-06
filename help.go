@@ -1,11 +1,11 @@
-package main
+﻿package main
 
 import (
 	"flag"
 	"fmt"
 	"os"
 
-	"github.com/ffuf/ffuf/v2/pkg/ffuf"
+	"github.com/to-jbm/ffuf/v2/pkg/ffuf"
 )
 
 type UsageSection struct {

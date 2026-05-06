@@ -1,10 +1,10 @@
-package filter
+﻿package filter
 
 import (
 	"testing"
 	"time"
 
-	"github.com/ffuf/ffuf/v2/pkg/ffuf"
+	"github.com/to-jbm/ffuf/v2/pkg/ffuf"
 )
 
 func TestNewTimeFilter(t *testing.T) {

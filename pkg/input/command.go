@@ -1,4 +1,4 @@
-package input
+﻿package input
 
 import (
 	"bytes"
@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"strconv"
 
-	"github.com/ffuf/ffuf/v2/pkg/ffuf"
+	"github.com/to-jbm/ffuf/v2/pkg/ffuf"
 )
 
 type CommandInput struct {

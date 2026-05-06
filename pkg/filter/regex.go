@@ -1,4 +1,4 @@
-package filter
+﻿package filter
 
 import (
 	"encoding/json"
@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/ffuf/ffuf/v2/pkg/ffuf"
+	"github.com/to-jbm/ffuf/v2/pkg/ffuf"
 )
 
 type RegexpFilter struct {

@@ -1,4 +1,4 @@
-package output
+﻿package output
 
 import (
 	"encoding/base64"
@@ -6,7 +6,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/ffuf/ffuf/v2/pkg/ffuf"
+	"github.com/to-jbm/ffuf/v2/pkg/ffuf"
 )
 
 var staticheaders = []string{"url", "redirectlocation", "position", "status_code", "content_length", "content_words", "content_lines", "content_type", "duration", "resultfile", "Ffufhash"}

@@ -1,4 +1,4 @@
-package output
+﻿package output
 
 import (
 	"crypto/md5"
@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ffuf/ffuf/v2/pkg/ffuf"
+	"github.com/to-jbm/ffuf/v2/pkg/ffuf"
 )
 
 const (
@@ -232,7 +232,7 @@ func (s *Stdoutput) Error(errstring string) {
 		fmt.Fprintf(os.Stderr, "%s", errstring)
 	} else {
 		if !s.config.Colors {
-			fmt.Fprintf(os.Stderr, "%s[ERR] %s\n", TERMINAL_CLEAR_LINE, errstring)
+			fmt.Fprintf(os.Stderr, "%s[ERR]Â %s\n", TERMINAL_CLEAR_LINE, errstring)
 		} else {
 			fmt.Fprintf(os.Stderr, "%s[%sERR%s] %s\n", TERMINAL_CLEAR_LINE, ANSI_RED, ANSI_CLEAR, errstring)
 		}
@@ -396,7 +396,7 @@ func (s *Stdoutput) writeResultToFile(resp ffuf.Response) string {
 			}
 		}
 	}
-	fileContent = fmt.Sprintf("%s\n---- ↑ Request ---- Response ↓ ----\n\n%s", resp.Request.Raw, resp.Raw)
+	fileContent = fmt.Sprintf("%s\n---- â†‘ Request ---- Response â†“ ----\n\n%s", resp.Request.Raw, resp.Raw)
 
 	// Create file name
 	fileName = fmt.Sprintf("%x", md5.Sum([]byte(fileContent)))

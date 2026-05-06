@@ -1,8 +1,8 @@
-package input
+﻿package input
 
 import (
 	"fmt"
-	"github.com/ffuf/ffuf/v2/pkg/ffuf"
+	"github.com/to-jbm/ffuf/v2/pkg/ffuf"
 	"strings"
 
 	"github.com/ffuf/pencode/pkg/pencode"

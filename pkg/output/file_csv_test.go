@@ -1,11 +1,11 @@
-package output
+﻿package output
 
 import (
 	"reflect"
 	"testing"
 	"time"
 
-	"github.com/ffuf/ffuf/v2/pkg/ffuf"
+	"github.com/to-jbm/ffuf/v2/pkg/ffuf"
 )
 
 func TestToCSV(t *testing.T) {

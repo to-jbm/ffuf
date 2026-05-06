@@ -1,4 +1,4 @@
-package scraper
+﻿package scraper
 
 import (
 	"encoding/json"
@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/ffuf/ffuf/v2/pkg/ffuf"
+	"github.com/to-jbm/ffuf/v2/pkg/ffuf"
 
 	"github.com/PuerkitoBio/goquery"
 )

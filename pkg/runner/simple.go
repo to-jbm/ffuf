@@ -1,4 +1,4 @@
-package runner
+﻿package runner
 
 import (
 	"bytes"
@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ffuf/ffuf/v2/pkg/ffuf"
+	"github.com/to-jbm/ffuf/v2/pkg/ffuf"
 
 	"github.com/andybalholm/brotli"
 )

@@ -1,10 +1,10 @@
-package output
+﻿package output
 
 import (
 	"os"
 	"testing"
 
-	"github.com/ffuf/ffuf/v2/pkg/ffuf"
+	"github.com/to-jbm/ffuf/v2/pkg/ffuf"
 )
 
 func TestAuditLogger(t *testing.T) {

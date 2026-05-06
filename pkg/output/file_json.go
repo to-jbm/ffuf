@@ -1,11 +1,11 @@
-package output
+﻿package output
 
 import (
 	"encoding/json"
 	"os"
 	"time"
 
-	"github.com/ffuf/ffuf/v2/pkg/ffuf"
+	"github.com/to-jbm/ffuf/v2/pkg/ffuf"
 )
 
 type ejsonFileOutput struct {

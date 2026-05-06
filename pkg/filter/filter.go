@@ -1,10 +1,10 @@
-package filter
+﻿package filter
 
 import (
 	"fmt"
 	"sync"
 
-	"github.com/ffuf/ffuf/v2/pkg/ffuf"
+	"github.com/to-jbm/ffuf/v2/pkg/ffuf"
 )
 
 // MatcherManager handles both filters and matchers.

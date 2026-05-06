@@ -1,10 +1,10 @@
-package filter
+﻿package filter
 
 import (
 	"strings"
 	"testing"
 
-	"github.com/ffuf/ffuf/v2/pkg/ffuf"
+	"github.com/to-jbm/ffuf/v2/pkg/ffuf"
 )
 
 func TestNewStatusFilter(t *testing.T) {
