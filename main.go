@@ -127,7 +127,7 @@ func ParseFlags(opts *ffuf.ConfigOptions) *ffuf.ConfigOptions {
 	flag.StringVar(&opts.Matcher.Status, "mc", opts.Matcher.Status, "Match HTTP status codes, or \"all\" for everything.")
 	flag.StringVar(&opts.Matcher.Time, "mt", opts.Matcher.Time, "Match how many milliseconds to the first response byte, either greater or less than. EG: >100 or <100")
 	flag.StringVar(&opts.Matcher.Words, "mw", opts.Matcher.Words, "Match amount of words in response")
-	flag.StringVar(&opts.General.WAFCodes, "wmc", opts.General.WAFCodes, "WAF/rate-limit detector: HTTP status codes treated as a WAF/rate-limit response. Comma separated list and ranges. Default 403,429 (set to \"\" to disable WAF detection entirely)")
+	flag.StringVar(&opts.General.WAFCodes, "wmc", opts.General.WAFCodes, "WAF/rate-limit detector: HTTP status codes treated as a WAF/rate-limit response. Comma separated list and ranges. Default 403,429,502,504 (set to \"\" to disable WAF detection entirely)")
 	flag.StringVar(&opts.General.WAFSize, "wms", opts.General.WAFSize, "WAF/rate-limit detector: response size(s) treated as a WAF/rate-limit response")
 	flag.StringVar(&opts.General.WAFWords, "wmw", opts.General.WAFWords, "WAF/rate-limit detector: response word count(s) treated as a WAF/rate-limit response")
 	flag.StringVar(&opts.General.WAFLines, "wml", opts.General.WAFLines, "WAF/rate-limit detector: response line count(s) treated as a WAF/rate-limit response")
@@ -174,6 +174,11 @@ func main() {
 	// filenames (output, debug log) so that they remain stable across the
 	// lifetime of the process (pause / interactive / resume reuse them).
 	startTime := time.Now()
+	// Capture the full shell pipeline as early as possible so sibling
+	// processes (e.g. `cat | tail | grep | ffuf -w -`) are still alive
+	// when we walk them. Stored on Config below and embedded into the
+	// output file alongside CommandLine.
+	fullCommand := ffuf.CaptureFullCommand()
 	// prepare the default config options from default config file
 	var opts *ffuf.ConfigOptions
 	opts, optserr = ffuf.ReadDefaultConfig()
@@ -266,6 +271,7 @@ func main() {
 	// auto-naming, audit log) all share the same clock anchor.
 	conf.StartTime = startTime
 	conf.Debuglog = opts.Output.DebugLog
+	conf.FullCommand = fullCommand
 
 	// If the user did not supply -o, derive a default output filename from
 	// the URL slug and start time. We do this after ConfigFromOptions so

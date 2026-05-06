@@ -152,9 +152,10 @@ func NewConfigOptions() *ConfigOptions {
 	c.General.StopOnErrors = false
 	c.General.Threads = 40
 	c.General.Verbose = false
-	// WAF/rate-limit detection is enabled by default with codes 403,429.
-	// Set -wmc "" (and leave the other -wmX/-wtime empty) to disable it.
-	c.General.WAFCodes = "403,429"
+	// WAF/rate-limit detection is enabled by default with codes
+	// 403,429,502,504. Set -wmc "" (and leave the other -wmX/-wtime
+	// empty) to disable it.
+	c.General.WAFCodes = "403,429,502,504"
 	c.General.WAFSize = ""
 	c.General.WAFWords = ""
 	c.General.WAFLines = ""

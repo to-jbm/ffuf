@@ -86,6 +86,36 @@ type Config struct {
 	// embedded in the output file so the user can see how far the run has
 	// progressed and resume from a specific position later.
 	LastProcessedPosition int64 `json:"last_position"`
+	// FullCommand is the best-effort reconstruction of the shell pipeline
+	// that ffuf is part of (e.g. "cat words.txt | grep foo | ffuf -w -").
+	// Captured once at startup; empty if reconstruction failed.
+	FullCommand string `json:"full_command"`
+	// wafBackingOffFlag is an atomic boolean (0/1) toggled while a WAF
+	// backoff sleep is in progress. Lowercase so it stays unexported and
+	// out of the Config JSON dump.
+	wafBackingOffFlag int32
+}
+
+// wafBackingOffFlag is an int32 used as an atomic boolean indicating that the
+// runtime is currently sleeping on a WAF/rate-limit backoff. It is read by the
+// output layer to decide whether to print a result to stdout immediately or
+// buffer it for printing after the pause finishes.
+var _ = atomic.LoadInt32 // keep atomic import in sync if features are stripped
+
+// SetWAFBackingOff atomically updates the WAF backoff flag.
+func (c *Config) SetWAFBackingOff(b bool) {
+	v := int32(0)
+	if b {
+		v = 1
+	}
+	atomic.StoreInt32(&c.wafBackingOffFlag, v)
+}
+
+// IsWAFBackingOff returns true if the runtime is currently in a WAF backoff
+// pause. Workers and the output layer use this to defer side effects (e.g.
+// printing results) so the on-screen pause msg stays clean.
+func (c *Config) IsWAFBackingOff() bool {
+	return atomic.LoadInt32(&c.wafBackingOffFlag) != 0
 }
 
 // SetLastProcessedPosition atomically updates LastProcessedPosition to the

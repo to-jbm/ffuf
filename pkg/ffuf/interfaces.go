@@ -77,6 +77,10 @@ type OutputProvider interface {
 	SetCurrentResults(results []Result)
 	Reset()
 	Cycle()
+	// FlushPendingResults prints any results that were buffered while the
+	// WAF/rate-limit backoff was in progress and then drops them from the
+	// pending buffer. Safe to call multiple times.
+	FlushPendingResults()
 }
 
 // AuditLogger is responsible for providing auditing output of every request/response

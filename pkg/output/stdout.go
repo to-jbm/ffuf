@@ -40,6 +40,11 @@ type Stdoutput struct {
 	// invocations cannot race each other on disk (e.g. interactive savejson
 	// happening in the middle of a periodic save).
 	fileMu sync.Mutex
+	// pendingMu guards pendingPrints. Results recorded while the WAF
+	// backoff is active are stashed here and printed in order on the
+	// first call to FlushPendingResults() after the pause ends.
+	pendingMu     sync.Mutex
+	pendingPrints []ffuf.Result
 }
 
 func NewStdoutput(conf *ffuf.Config) *Stdoutput {
@@ -380,8 +385,36 @@ func (s *Stdoutput) Result(resp ffuf.Response) {
 	s.resultsMu.Lock()
 	s.CurrentResults = append(s.CurrentResults, sResult)
 	s.resultsMu.Unlock()
-	// Output the result
+
+	// If we are currently in a WAF/rate-limit backoff sleep, defer the
+	// stdout print so the pause msg stays clean. The buffered results
+	// are flushed in order by FlushPendingResults() once the pause ends.
+	if s.config.IsWAFBackingOff() {
+		s.pendingMu.Lock()
+		s.pendingPrints = append(s.pendingPrints, sResult)
+		s.pendingMu.Unlock()
+		return
+	}
 	s.PrintResult(sResult)
+}
+
+// FlushPendingResults prints (in arrival order) every result that was
+// recorded while a WAF backoff was active. After this call the pending
+// buffer is empty. Safe to call when no results are pending; it is also
+// safe to call concurrently with new appends because we drain the slice
+// under the mutex and print outside of it.
+func (s *Stdoutput) FlushPendingResults() {
+	s.pendingMu.Lock()
+	if len(s.pendingPrints) == 0 {
+		s.pendingMu.Unlock()
+		return
+	}
+	pending := s.pendingPrints
+	s.pendingPrints = nil
+	s.pendingMu.Unlock()
+	for _, r := range pending {
+		s.PrintResult(r)
+	}
 }
 
 func (s *Stdoutput) writeResultToFile(resp ffuf.Response) string {

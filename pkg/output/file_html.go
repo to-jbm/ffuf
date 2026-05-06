@@ -29,6 +29,7 @@ type htmlResult struct {
 
 type htmlFileOutput struct {
 	CommandLine    string
+	FullCommand    string
 	Time           string
 	LastPosition   int64
 	TotalPositions int64
@@ -81,6 +82,7 @@ const (
         <div class="row center">
 
 		<pre>{{ .CommandLine }}</pre>
+		{{ if .FullCommand }}<pre>Full command: {{ .FullCommand }}</pre>{{ end }}
 		<pre>{{ .Time }}</pre>
 		<pre>Progress: last processed position {{ .LastPosition }} / {{ .TotalPositions }}</pre>
 
@@ -260,6 +262,7 @@ func writeHTML(filename string, config *ffuf.Config, results []ffuf.Result) erro
 	}
 	outHTML := htmlFileOutput{
 		CommandLine:    config.CommandLine,
+		FullCommand:    config.FullCommand,
 		Time:           ti.Format(time.RFC3339),
 		LastPosition:   config.GetLastProcessedPosition(),
 		TotalPositions: config.TotalPositions,

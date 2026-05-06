@@ -12,7 +12,8 @@ const (
 	markdownTemplate = `# FFUF Report
 
   Command line : ` + "`{{.CommandLine}}`" + `
-  Time: ` + "{{ .Time }}" + `
+  {{ if .FullCommand }}Full command: ` + "`{{ .FullCommand }}`" + `
+  {{ end }}Time: ` + "{{ .Time }}" + `
   Progress: last processed position ` + "{{ .LastPosition }}" + ` / ` + "{{ .TotalPositions }}" + `
 
   {{ range .Keys }}| {{ . }} {{ end }}| URL | Redirectlocation | Position | Status Code | Content Length | Content Words | Content Lines | Content Type | Duration | ResultFile | ScraperData | Ffufhash
@@ -77,6 +78,7 @@ func writeMarkdown(filename string, config *ffuf.Config, results []ffuf.Result) 
 
 	outMD := htmlFileOutput{
 		CommandLine:    config.CommandLine,
+		FullCommand:    config.FullCommand,
 		Time:           ti.Format(time.RFC3339),
 		LastPosition:   config.GetLastProcessedPosition(),
 		TotalPositions: config.TotalPositions,

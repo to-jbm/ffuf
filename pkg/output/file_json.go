@@ -9,8 +9,12 @@ import (
 )
 
 type ejsonFileOutput struct {
-	CommandLine string        `json:"commandline"`
-	Time        string        `json:"time"`
+	CommandLine string `json:"commandline"`
+	// FullCommand is a best-effort reconstruction of the full shell
+	// pipeline (e.g. "cat words.txt | grep foo | ffuf -w -"). May be
+	// empty if pipeline reconstruction failed.
+	FullCommand string `json:"full_command"`
+	Time        string `json:"time"`
 	// LastPosition is the highest input position of any completed request
 	// at the time the file was written. Combined with TotalPositions it
 	// gives an at-a-glance view of run progress and can be used as a
@@ -39,6 +43,7 @@ type JsonResult struct {
 
 type jsonFileOutput struct {
 	CommandLine    string       `json:"commandline"`
+	FullCommand    string       `json:"full_command"`
 	Time           string       `json:"time"`
 	LastPosition   int64        `json:"last_position"`
 	TotalPositions int64        `json:"total_positions"`
@@ -50,6 +55,7 @@ func writeEJSON(filename string, config *ffuf.Config, res []ffuf.Result) error {
 	t := time.Now()
 	outJSON := ejsonFileOutput{
 		CommandLine:    config.CommandLine,
+		FullCommand:    config.FullCommand,
 		Time:           t.Format(time.RFC3339),
 		LastPosition:   config.GetLastProcessedPosition(),
 		TotalPositions: config.TotalPositions,
@@ -93,6 +99,7 @@ func writeJSON(filename string, config *ffuf.Config, res []ffuf.Result) error {
 	}
 	outJSON := jsonFileOutput{
 		CommandLine:    config.CommandLine,
+		FullCommand:    config.FullCommand,
 		Time:           t.Format(time.RFC3339),
 		LastPosition:   config.GetLastProcessedPosition(),
 		TotalPositions: config.TotalPositions,

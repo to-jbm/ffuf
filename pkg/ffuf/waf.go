@@ -59,6 +59,9 @@ func (j *Job) recordWAFResult(isWAF bool) {
 			duration = j.nextBackoffDurationLocked()
 			j.wafConsec = 0
 			triggered = true
+			// Set the public flag so the output layer starts buffering
+			// stdout prints right away (before we even enter the sleep).
+			j.Config.SetWAFBackingOff(true)
 		}
 	} else {
 		// Only count toward "recovery" if we previously saw any WAF activity
@@ -123,6 +126,10 @@ func (j *Job) doWAFPause(d time.Duration) {
 	j.nonWafConsec = 0
 	j.wafCancelCh = nil
 	j.wafMu.Unlock()
+	// Clear the public flag BEFORE flushing so any results that race in at
+	// this point go to stdout directly instead of bouncing through the
+	// pending buffer.
+	j.Config.SetWAFBackingOff(false)
 	j.wafPauseWg.Done()
 
 	if j.Output != nil && j.Running {
@@ -131,6 +138,9 @@ func (j *Job) doWAFPause(d time.Duration) {
 		} else {
 			j.Output.Info("WAF/rate-limit backoff complete, resuming")
 		}
+		// Print any results captured during the pause so the user can
+		// still see the matches that completed in flight.
+		j.Output.FlushPendingResults()
 	}
 }
 
@@ -139,12 +149,14 @@ func (j *Job) doWAFPause(d time.Duration) {
 // time (no-op if no backoff is in progress).
 //
 // The detector remains armed afterwards; only the current pause and the
-// escalation history are cleared.
+// escalation history are cleared. Pending stdout prints buffered during the
+// pause are flushed so the user is not surprised by missing output.
 func (j *Job) CancelWAFBackoff() {
 	j.wafMu.Lock()
 	j.wafConsec = 0
 	j.nonWafConsec = 0
 	j.wafEscalIdx = 0
+	wasPaused := j.wafBackingOff
 	if j.wafBackingOff && j.wafCancelCh != nil {
 		select {
 		case <-j.wafCancelCh:
@@ -154,4 +166,13 @@ func (j *Job) CancelWAFBackoff() {
 		}
 	}
 	j.wafMu.Unlock()
+	if wasPaused {
+		// Make sure the output flag is cleared even if doWAFPause has
+		// not yet observed the cancel (e.g. when called from the Ctrl-C
+		// monitor before the select returns).
+		j.Config.SetWAFBackingOff(false)
+		if j.Output != nil {
+			j.Output.FlushPendingResults()
+		}
+	}
 }
