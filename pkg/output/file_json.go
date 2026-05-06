@@ -11,8 +11,14 @@ import (
 type ejsonFileOutput struct {
 	CommandLine string        `json:"commandline"`
 	Time        string        `json:"time"`
-	Results     []ffuf.Result `json:"results"`
-	Config      *ffuf.Config  `json:"config"`
+	// LastPosition is the highest input position of any completed request
+	// at the time the file was written. Combined with TotalPositions it
+	// gives an at-a-glance view of run progress and can be used as a
+	// resume hint (skip wordlist entries up to this index).
+	LastPosition   int64         `json:"last_position"`
+	TotalPositions int64         `json:"total_positions"`
+	Results        []ffuf.Result `json:"results"`
+	Config         *ffuf.Config  `json:"config"`
 }
 
 type JsonResult struct {
@@ -32,18 +38,22 @@ type JsonResult struct {
 }
 
 type jsonFileOutput struct {
-	CommandLine string       `json:"commandline"`
-	Time        string       `json:"time"`
-	Results     []JsonResult `json:"results"`
-	Config      *ffuf.Config `json:"config"`
+	CommandLine    string       `json:"commandline"`
+	Time           string       `json:"time"`
+	LastPosition   int64        `json:"last_position"`
+	TotalPositions int64        `json:"total_positions"`
+	Results        []JsonResult `json:"results"`
+	Config         *ffuf.Config `json:"config"`
 }
 
 func writeEJSON(filename string, config *ffuf.Config, res []ffuf.Result) error {
 	t := time.Now()
 	outJSON := ejsonFileOutput{
-		CommandLine: config.CommandLine,
-		Time:        t.Format(time.RFC3339),
-		Results:     res,
+		CommandLine:    config.CommandLine,
+		Time:           t.Format(time.RFC3339),
+		LastPosition:   config.GetLastProcessedPosition(),
+		TotalPositions: config.TotalPositions,
+		Results:        res,
 	}
 
 	outBytes, err := json.Marshal(outJSON)
@@ -82,10 +92,12 @@ func writeJSON(filename string, config *ffuf.Config, res []ffuf.Result) error {
 		})
 	}
 	outJSON := jsonFileOutput{
-		CommandLine: config.CommandLine,
-		Time:        t.Format(time.RFC3339),
-		Results:     jsonRes,
-		Config:      config,
+		CommandLine:    config.CommandLine,
+		Time:           t.Format(time.RFC3339),
+		LastPosition:   config.GetLastProcessedPosition(),
+		TotalPositions: config.TotalPositions,
+		Results:        jsonRes,
+		Config:         config,
 	}
 	outBytes, err := json.Marshal(outJSON)
 	if err != nil {

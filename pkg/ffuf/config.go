@@ -2,6 +2,8 @@ package ffuf
 
 import (
 	"context"
+	"sync/atomic"
+	"time"
 )
 
 type Config struct {
@@ -68,6 +70,42 @@ type Config struct {
 	Http2                     bool                  `json:"http2"`
 	ClientCert                string                `json:"client-cert"`
 	ClientKey                 string                `json:"client-key"`
+	// WAF / rate-limit adaptive backoff
+	WAFMatchers  map[string]FilterProvider `json:"-"`
+	WAFTimes     []int                     `json:"waf_times"`
+	WAFThreshold int                       `json:"waf_threshold"`
+	// StartTime is the wall-clock time at which the ffuf process was launched.
+	// It is used to derive the default output and debug-log filenames so that
+	// the same files are reused across pause / interactive / resume.
+	StartTime time.Time `json:"start_time"`
+	// TotalPositions is the total number of input positions this run will
+	// iterate over (set once at job start). 0 means unknown / not yet set.
+	TotalPositions int64 `json:"total_positions"`
+	// LastProcessedPosition is the maximum input position of any request that
+	// has completed (success or HTTP error). Updated atomically by workers and
+	// embedded in the output file so the user can see how far the run has
+	// progressed and resume from a specific position later.
+	LastProcessedPosition int64 `json:"last_position"`
+}
+
+// SetLastProcessedPosition atomically updates LastProcessedPosition to the
+// max of its current value and pos.
+func (c *Config) SetLastProcessedPosition(pos int) {
+	p := int64(pos)
+	for {
+		cur := atomic.LoadInt64(&c.LastProcessedPosition)
+		if p <= cur {
+			return
+		}
+		if atomic.CompareAndSwapInt64(&c.LastProcessedPosition, cur, p) {
+			return
+		}
+	}
+}
+
+// GetLastProcessedPosition returns LastProcessedPosition with an atomic load.
+func (c *Config) GetLastProcessedPosition() int64 {
+	return atomic.LoadInt64(&c.LastProcessedPosition)
 }
 
 type InputProviderConfig struct {
@@ -127,6 +165,12 @@ func NewConfig(ctx context.Context, cancel context.CancelFunc) Config {
 	conf.Verbose = false
 	conf.Wordlists = []string{}
 	conf.Http2 = false
+	conf.WAFMatchers = make(map[string]FilterProvider)
+	conf.WAFTimes = []int{}
+	conf.WAFThreshold = 10
+	conf.StartTime = time.Now()
+	conf.TotalPositions = 0
+	conf.LastProcessedPosition = 0
 	return conf
 }
 

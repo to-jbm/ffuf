@@ -13,6 +13,7 @@ const (
 
   Command line : ` + "`{{.CommandLine}}`" + `
   Time: ` + "{{ .Time }}" + `
+  Progress: last processed position ` + "{{ .LastPosition }}" + ` / ` + "{{ .TotalPositions }}" + `
 
   {{ range .Keys }}| {{ . }} {{ end }}| URL | Redirectlocation | Position | Status Code | Content Length | Content Words | Content Lines | Content Type | Duration | ResultFile | ScraperData | Ffufhash
   {{ range .Keys }}| :- {{ end }}| :-- | :--------------- | :---- | :------- | :---------- | :------------- | :------------ | :--------- | :----------- | :------------ | :-------- |
@@ -75,10 +76,12 @@ func writeMarkdown(filename string, config *ffuf.Config, results []ffuf.Result) 
 	}
 
 	outMD := htmlFileOutput{
-		CommandLine: config.CommandLine,
-		Time:        ti.Format(time.RFC3339),
-		Results:     htmlResults,
-		Keys:        keywords,
+		CommandLine:    config.CommandLine,
+		Time:           ti.Format(time.RFC3339),
+		LastPosition:   config.GetLastProcessedPosition(),
+		TotalPositions: config.TotalPositions,
+		Results:        htmlResults,
+		Keys:           keywords,
 	}
 
 	f, err := os.Create(filename)

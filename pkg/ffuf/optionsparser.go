@@ -70,6 +70,13 @@ type GeneralOptions struct {
 	StopOnErrors              bool     `json:"stop_on_errors"`
 	Threads                   int      `json:"threads"`
 	Verbose                   bool     `json:"verbose"`
+	WAFCodes                  string   `json:"waf_codes"`
+	WAFSize                   string   `json:"waf_size"`
+	WAFWords                  string   `json:"waf_words"`
+	WAFLines                  string   `json:"waf_lines"`
+	WAFRegexp                 string   `json:"waf_regexp"`
+	WAFTime                   string   `json:"waf_time"`
+	WAFThreshold              int      `json:"waf_threshold"`
 }
 
 type InputOptions struct {
@@ -145,6 +152,15 @@ func NewConfigOptions() *ConfigOptions {
 	c.General.StopOnErrors = false
 	c.General.Threads = 40
 	c.General.Verbose = false
+	// WAF/rate-limit detection is enabled by default with codes 403,429.
+	// Set -wmc "" (and leave the other -wmX/-wtime empty) to disable it.
+	c.General.WAFCodes = "403,429"
+	c.General.WAFSize = ""
+	c.General.WAFWords = ""
+	c.General.WAFLines = ""
+	c.General.WAFRegexp = ""
+	c.General.WAFTime = ""
+	c.General.WAFThreshold = 10
 	c.HTTP.Data = ""
 	c.HTTP.FollowRedirects = false
 	c.HTTP.IgnoreBody = false
@@ -541,6 +557,48 @@ func ConfigFromOptions(parseOpts *ConfigOptions, ctx context.Context, cancel con
 	conf.Verbose = parseOpts.General.Verbose
 	conf.Json = parseOpts.General.Json
 	conf.Http2 = parseOpts.HTTP.Http2
+
+	// WAF / rate-limit adaptive backoff. Detection is engaged when ANY
+	// matcher option (-wmc/-wms/-wmw/-wml/-wmr) or the backoff ladder
+	// (-wtime) is set. By default -wmc is "403,429", so detection is on
+	// out of the box; users can disable it by setting -wmc "" (and leaving
+	// the other -wmX/-wtime empty).
+	wafEnabled := parseOpts.General.WAFCodes != "" ||
+		parseOpts.General.WAFSize != "" ||
+		parseOpts.General.WAFWords != "" ||
+		parseOpts.General.WAFLines != "" ||
+		parseOpts.General.WAFRegexp != "" ||
+		parseOpts.General.WAFTime != ""
+
+	if parseOpts.General.WAFThreshold > 0 {
+		conf.WAFThreshold = parseOpts.General.WAFThreshold
+	} else {
+		conf.WAFThreshold = 10
+	}
+
+	if parseOpts.General.WAFTime != "" {
+		ladder := []int{}
+		for _, raw := range strings.Split(parseOpts.General.WAFTime, ",") {
+			raw = strings.TrimSpace(raw)
+			if raw == "" {
+				continue
+			}
+			v, perr := strconv.Atoi(raw)
+			if perr != nil || v <= 0 {
+				errs.Add(fmt.Errorf("WAF backoff times (-wtime): invalid value %q, expected comma-separated positive integers (seconds), e.g. 30,60,120", raw))
+				ladder = nil
+				break
+			}
+			ladder = append(ladder, v)
+		}
+		if len(ladder) > 0 {
+			conf.WAFTimes = ladder
+		}
+	}
+	if wafEnabled && len(conf.WAFTimes) == 0 {
+		// Sensible default escalation ladder if WAF matchers are set without -wtime
+		conf.WAFTimes = []int{30, 60, 120}
+	}
 
 	// Check that fmode and mmode have sane values
 	valid_opmodes := []string{"and", "or"}

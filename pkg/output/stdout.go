@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ffuf/ffuf/v2/pkg/ffuf"
@@ -31,6 +32,14 @@ type Stdoutput struct {
 	fuzzkeywords   []string
 	Results        []ffuf.Result
 	CurrentResults []ffuf.Result
+	// resultsMu guards Results and CurrentResults so the periodic save
+	// goroutine in Job can safely snapshot them while worker goroutines
+	// are still appending new results.
+	resultsMu sync.Mutex
+	// fileMu serializes actual writes to the output file so two SaveFile
+	// invocations cannot race each other on disk (e.g. interactive savejson
+	// happening in the middle of a periodic save).
+	fileMu sync.Mutex
 }
 
 func NewStdoutput(conf *ffuf.Config) *Stdoutput {
@@ -142,23 +151,44 @@ func (s *Stdoutput) Banner() {
 
 // Reset resets the result slice
 func (s *Stdoutput) Reset() {
+	s.resultsMu.Lock()
+	defer s.resultsMu.Unlock()
 	s.CurrentResults = make([]ffuf.Result, 0)
 }
 
 // Cycle moves the CurrentResults to Results and resets the results slice
 func (s *Stdoutput) Cycle() {
+	s.resultsMu.Lock()
+	defer s.resultsMu.Unlock()
 	s.Results = append(s.Results, s.CurrentResults...)
-	s.Reset()
+	s.CurrentResults = make([]ffuf.Result, 0)
 }
 
 // GetResults returns the result slice
 func (s *Stdoutput) GetCurrentResults() []ffuf.Result {
-	return s.CurrentResults
+	s.resultsMu.Lock()
+	defer s.resultsMu.Unlock()
+	out := make([]ffuf.Result, len(s.CurrentResults))
+	copy(out, s.CurrentResults)
+	return out
 }
 
 // SetResults sets the result slice
 func (s *Stdoutput) SetCurrentResults(results []ffuf.Result) {
+	s.resultsMu.Lock()
+	defer s.resultsMu.Unlock()
 	s.CurrentResults = results
+}
+
+// snapshotResults returns a defensive copy of the combined Results +
+// CurrentResults slices. Caller must NOT hold resultsMu.
+func (s *Stdoutput) snapshotResults() []ffuf.Result {
+	s.resultsMu.Lock()
+	defer s.resultsMu.Unlock()
+	out := make([]ffuf.Result, 0, len(s.Results)+len(s.CurrentResults))
+	out = append(out, s.Results...)
+	out = append(out, s.CurrentResults...)
+	return out
 }
 
 func (s *Stdoutput) Progress(status ffuf.Progress) {
@@ -272,28 +302,37 @@ func (s *Stdoutput) writeToAll(filename string, config *ffuf.Config, res []ffuf.
 
 }
 
-// SaveFile saves the current results to a file of a given type
+// SaveFile saves the current results to a file of a given type. Safe to be
+// called concurrently with worker Result() appends and with itself; writes
+// are serialized by fileMu so the on-disk file is never half-written.
 func (s *Stdoutput) SaveFile(filename, format string) error {
-	var err error
-	if s.config.OutputSkipEmptyFile && len(s.Results) == 0 && len(s.CurrentResults) == 0 {
-		s.Info("No results and -or defined, output file not written.")
-		return err
+	combined := s.snapshotResults()
+	if s.config.OutputSkipEmptyFile && len(combined) == 0 {
+		// During a periodic save loop we silently skip the empty-file case;
+		// the user only sees this notice on Finalize via the explicit info
+		// line in Stop.
+		return nil
 	}
+
+	s.fileMu.Lock()
+	defer s.fileMu.Unlock()
+
+	var err error
 	switch format {
 	case "all":
-		err = s.writeToAll(filename, s.config, append(s.Results, s.CurrentResults...))
+		err = s.writeToAll(filename, s.config, combined)
 	case "json":
-		err = writeJSON(filename, s.config, append(s.Results, s.CurrentResults...))
+		err = writeJSON(filename, s.config, combined)
 	case "ejson":
-		err = writeEJSON(filename, s.config, append(s.Results, s.CurrentResults...))
+		err = writeEJSON(filename, s.config, combined)
 	case "html":
-		err = writeHTML(filename, s.config, append(s.Results, s.CurrentResults...))
+		err = writeHTML(filename, s.config, combined)
 	case "md":
-		err = writeMarkdown(filename, s.config, append(s.Results, s.CurrentResults...))
+		err = writeMarkdown(filename, s.config, combined)
 	case "csv":
-		err = writeCSV(filename, s.config, append(s.Results, s.CurrentResults...), false)
+		err = writeCSV(filename, s.config, combined, false)
 	case "ecsv":
-		err = writeCSV(filename, s.config, append(s.Results, s.CurrentResults...), true)
+		err = writeCSV(filename, s.config, combined, true)
 	}
 	return err
 }
@@ -338,7 +377,9 @@ func (s *Stdoutput) Result(resp ffuf.Response) {
 		ResultFile:       resp.ResultFile,
 		Host:             resp.Request.Host,
 	}
+	s.resultsMu.Lock()
 	s.CurrentResults = append(s.CurrentResults, sResult)
+	s.resultsMu.Unlock()
 	// Output the result
 	s.PrintResult(sResult)
 }

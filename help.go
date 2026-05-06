@@ -84,6 +84,13 @@ func Usage() {
 		Hidden:        false,
 		ExpectedFlags: []string{"fmode", "fc", "fl", "fr", "fs", "ft", "fw"},
 	}
+	u_waf := UsageSection{
+		Name:          "WAF / RATE-LIMIT OPTIONS",
+		Description:   "Detect WAF / rate-limit responses and apply an adaptive backoff. When the detector flags N consecutive responses as WAF/rate-limit (-wthreshold), execution pauses for the next value in the -wtime ladder; the ladder escalates per consecutive trigger and stays at the last value. The ladder resets when N consecutive non-WAF responses are observed.",
+		Flags:         make([]UsageFlag, 0),
+		Hidden:        false,
+		ExpectedFlags: []string{"wmc", "wms", "wmw", "wml", "wmr", "wtime", "wthreshold"},
+	}
 	u_input := UsageSection{
 		Name:          "INPUT OPTIONS",
 		Description:   "Options for input data for fuzzing. Wordlists and input generators.",
@@ -98,7 +105,7 @@ func Usage() {
 		Hidden:        false,
 		ExpectedFlags: []string{"audit-log", "debug-log", "o", "of", "od", "or"},
 	}
-	sections := []UsageSection{u_http, u_general, u_compat, u_matcher, u_filter, u_input, u_output}
+	sections := []UsageSection{u_http, u_general, u_compat, u_matcher, u_filter, u_waf, u_input, u_output}
 
 	// Populate the flag sections
 	max_length := 0
@@ -146,6 +153,10 @@ func Usage() {
 
 	fmt.Printf("  Fuzz multiple locations. Match only responses reflecting the value of \"VAL\" keyword. Colored.\n")
 	fmt.Printf("    ffuf -w params.txt:PARAM -w values.txt:VAL -u https://example.org/?PARAM=VAL -mr \"VAL\" -c\n\n")
+
+	fmt.Printf("  Auto-throttle when the target serves WAF/rate-limit responses. Pause 30s on the first burst,\n")
+	fmt.Printf("  then 60s, then 120s; reset back to 30s once the WAF stops blocking.\n")
+	fmt.Printf("    ffuf -w wordlist.txt -u https://example.org/FUZZ -wmc 429,403 -wtime 30,60,120 -wthreshold 10\n\n")
 
 	fmt.Printf("  More information and examples: https://github.com/ffuf/ffuf\n\n")
 }

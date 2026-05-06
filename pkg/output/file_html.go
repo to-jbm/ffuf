@@ -28,10 +28,12 @@ type htmlResult struct {
 }
 
 type htmlFileOutput struct {
-	CommandLine string
-	Time        string
-	Keys        []string
-	Results     []htmlResult
+	CommandLine    string
+	Time           string
+	LastPosition   int64
+	TotalPositions int64
+	Keys           []string
+	Results        []htmlResult
 }
 
 const (
@@ -80,6 +82,7 @@ const (
 
 		<pre>{{ .CommandLine }}</pre>
 		<pre>{{ .Time }}</pre>
+		<pre>Progress: last processed position {{ .LastPosition }} / {{ .TotalPositions }}</pre>
 
    <table id="ffufreport">
         <thead>
@@ -256,10 +259,12 @@ func writeHTML(filename string, config *ffuf.Config, results []ffuf.Result) erro
 		htmlResults = append(htmlResults, hres)
 	}
 	outHTML := htmlFileOutput{
-		CommandLine: config.CommandLine,
-		Time:        ti.Format(time.RFC3339),
-		Results:     htmlResults,
-		Keys:        keywords,
+		CommandLine:    config.CommandLine,
+		Time:           ti.Format(time.RFC3339),
+		LastPosition:   config.GetLastProcessedPosition(),
+		TotalPositions: config.TotalPositions,
+		Results:        htmlResults,
+		Keys:           keywords,
 	}
 
 	f, err := os.Create(filename)

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -41,6 +42,14 @@ type Job struct {
 	currentDepth         int
 	calibMutex           sync.Mutex
 	pauseWg              sync.WaitGroup
+	// WAF / rate-limit adaptive backoff state
+	wafMu         sync.Mutex
+	wafPauseWg    sync.WaitGroup
+	wafConsec     int
+	nonWafConsec  int
+	wafEscalIdx   int
+	wafBackingOff bool
+	wafCancelCh   chan struct{}
 }
 
 type QueueJob struct {
@@ -126,6 +135,10 @@ func (j *Job) Start() {
 		j.queuejobs = append(j.queuejobs, QueueJob{Url: j.Config.Url, depth: 0, req: BaseRequest(j.Config)})
 		j.Total = j.Input.Total()
 	}
+	// Publish total positions to Config so the periodic save / output file
+	// can include it. Using atomic for forward-compat consistency with
+	// LastProcessedPosition.
+	atomic.StoreInt64(&j.Config.TotalPositions, int64(j.Total))
 
 	rand.Seed(time.Now().UnixNano())
 	defer j.Stop()
@@ -138,6 +151,13 @@ func (j *Job) Start() {
 	}
 	// Monitor for SIGTERM and do cleanup properly (writing the output files etc)
 	j.interruptMonitor()
+	// Start a periodic save loop so the output file is updated on disk every
+	// few seconds. This is what makes ffuf crash-resistant: even if the user
+	// kills the process or the system goes down mid-run, the latest results
+	// (and the high-water position) are already persisted.
+	periodicDone := make(chan struct{})
+	go j.periodicOutputSave(periodicDone)
+
 	for j.jobsInQueue() {
 		j.prepareQueueJob()
 		j.Reset(true)
@@ -145,9 +165,39 @@ func (j *Job) Start() {
 		j.startExecution()
 	}
 
+	close(periodicDone)
 	err := j.Output.Finalize()
 	if err != nil {
 		j.Output.Error(err.Error())
+	}
+}
+
+// periodicOutputSave flushes the output file at a fixed interval. It is a
+// no-op until the user has provided / auto-generated -o. Running on a single
+// goroutine guarantees the file is never written by two writers concurrently.
+func (j *Job) periodicOutputSave(done <-chan struct{}) {
+	const interval = 5 * time.Second
+	if j.Output == nil {
+		return
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-done:
+			return
+		case <-j.Config.Context.Done():
+			return
+		case <-ticker.C:
+			if j.Config.OutputFile == "" {
+				continue
+			}
+			if err := j.Output.SaveFile(j.Config.OutputFile, j.Config.OutputFormat); err != nil {
+				// Use log so we don't spam the terminal with the same
+				// transient filesystem error every 5s.
+				log.Printf("periodic output save failed: %s", err)
+			}
+		}
 	}
 }
 
@@ -253,6 +303,7 @@ func (j *Job) startExecution() {
 			break
 		}
 		j.pauseWg.Wait()
+		j.wafPauseWg.Wait()
 		// Handle the rate & thread limiting
 		threadlimiter <- true
 		// Ratelimiter handles the rate ticker
@@ -293,6 +344,12 @@ func (j *Job) interruptMonitor() {
 			if j.Paused {
 				j.pauseWg.Done()
 			}
+			// Cancel any in-progress WAF/rate-limit backoff so workers
+			// blocked on the WAF pause unblock immediately. The job
+			// context cancellation in j.Stop() also unblocks the sleep,
+			// but explicit cancellation makes the shutdown ordering
+			// independent of select scheduling.
+			j.CancelWAFBackoff()
 			// Stop the job
 			j.Stop()
 		}
@@ -420,6 +477,9 @@ func (j *Job) runTask(input map[string][]byte, position int, retried bool) {
 	}
 
 	if err != nil {
+		// Even on error, mark this position as completed so the high-water
+		// resume hint is monotonic and reflects all real progress.
+		j.Config.SetLastProcessedPosition(position)
 		if retried {
 			j.incError()
 			log.Printf("%s", err)
@@ -517,6 +577,15 @@ func (j *Job) runTask(input map[string][]byte, position int, retried bool) {
 	if j.Config.Recursion && j.Config.RecursionStrategy == "default" && len(resp.GetRedirectLocation(false)) > 0 {
 		j.handleDefaultRecursionJob(resp)
 	}
+
+	// Track the high-water input position of any completed request so it
+	// can be persisted to the output file (used as a resume hint).
+	j.Config.SetLastProcessedPosition(position)
+
+	// Feed the WAF/rate-limit detector. May block this goroutine if the
+	// threshold is reached, which intentionally also throttles in-flight workers
+	// (the dispatch loop is gated by j.wafPauseWg).
+	j.recordWAFResult(j.evalWAF(resp))
 }
 
 func (j *Job) handleScraperResult(resp *Response, sres ScraperResult) {

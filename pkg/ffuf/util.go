@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 )
 
 // used for random string generation in calibration function
@@ -123,6 +124,66 @@ func StrInSlice(key string, slice []string) bool {
 		}
 	}
 	return false
+}
+
+// SlugifyURL turns a URL into a filesystem-safe slug. It strips the scheme,
+// replaces every non-alphanumeric run with a single underscore, trims leading
+// and trailing underscores, and caps the length at 100 characters. If the
+// input slugifies to an empty string, "ffuf" is returned.
+func SlugifyURL(rawURL string) string {
+	s := rawURL
+	if i := strings.Index(s, "://"); i != -1 {
+		s = s[i+3:]
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	prevUnderscore := true
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			prevUnderscore = false
+		} else {
+			if !prevUnderscore {
+				b.WriteRune('_')
+				prevUnderscore = true
+			}
+		}
+	}
+	out := strings.Trim(b.String(), "_")
+	if out == "" {
+		out = "ffuf"
+	}
+	if len(out) > 100 {
+		out = out[:100]
+	}
+	return out
+}
+
+// FormatStartTime formats a time as a filesystem-safe timestamp suitable for
+// embedding in default output filenames. Format is YYYY-MM-DD_HHMMSS (no
+// colons, so it is safe on Windows filesystems).
+func FormatStartTime(t time.Time) string {
+	return t.Format("2006-01-02_150405")
+}
+
+// AutoOutputFilename returns the default value for -o when the user has not
+// provided one. The extension is chosen based on -of:
+//   - "all"  -> no extension (writeToAll appends .json/.ejson/.html/...)
+//   - other  -> "." + format (e.g. ".json")
+func AutoOutputFilename(rawURL string, t time.Time, format string) string {
+	base := SlugifyURL(rawURL) + "_" + FormatStartTime(t)
+	switch format {
+	case "", "all":
+		return base
+	default:
+		return base + "." + format
+	}
+}
+
+// AutoDebugLogFilename returns the default value for -debug-log when the user
+// has not provided one.
+func AutoDebugLogFilename(rawURL string, t time.Time) string {
+	return SlugifyURL(rawURL) + "_errors_" + FormatStartTime(t) + ".log"
 }
 
 func mergeMaps(m1 map[string][]string, m2 map[string][]string) map[string][]string {

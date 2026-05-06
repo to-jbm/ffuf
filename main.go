@@ -127,6 +127,13 @@ func ParseFlags(opts *ffuf.ConfigOptions) *ffuf.ConfigOptions {
 	flag.StringVar(&opts.Matcher.Status, "mc", opts.Matcher.Status, "Match HTTP status codes, or \"all\" for everything.")
 	flag.StringVar(&opts.Matcher.Time, "mt", opts.Matcher.Time, "Match how many milliseconds to the first response byte, either greater or less than. EG: >100 or <100")
 	flag.StringVar(&opts.Matcher.Words, "mw", opts.Matcher.Words, "Match amount of words in response")
+	flag.StringVar(&opts.General.WAFCodes, "wmc", opts.General.WAFCodes, "WAF/rate-limit detector: HTTP status codes treated as a WAF/rate-limit response. Comma separated list and ranges. Default 403,429 (set to \"\" to disable WAF detection entirely)")
+	flag.StringVar(&opts.General.WAFSize, "wms", opts.General.WAFSize, "WAF/rate-limit detector: response size(s) treated as a WAF/rate-limit response")
+	flag.StringVar(&opts.General.WAFWords, "wmw", opts.General.WAFWords, "WAF/rate-limit detector: response word count(s) treated as a WAF/rate-limit response")
+	flag.StringVar(&opts.General.WAFLines, "wml", opts.General.WAFLines, "WAF/rate-limit detector: response line count(s) treated as a WAF/rate-limit response")
+	flag.StringVar(&opts.General.WAFRegexp, "wmr", opts.General.WAFRegexp, "WAF/rate-limit detector: regexp matched against response (headers + body) treated as a WAF/rate-limit response")
+	flag.StringVar(&opts.General.WAFTime, "wtime", opts.General.WAFTime, "WAF/rate-limit backoff ladder in seconds (comma separated). e.g. 30,60,120 - escalates per consecutive trigger, stays at last value afterwards. Setting this implicitly engages WAF detection with default codes 403,429,401")
+	flag.IntVar(&opts.General.WAFThreshold, "wthreshold", opts.General.WAFThreshold, "WAF/rate-limit detector: number of consecutive WAF/rate-limit responses required to trigger a backoff (and consecutive non-WAF responses needed to reset the ladder).")
 	flag.StringVar(&opts.Output.AuditLog, "audit-log", opts.Output.AuditLog, "Write audit log containing all requests, responses and config")
 	flag.StringVar(&opts.Output.DebugLog, "debug-log", opts.Output.DebugLog, "Write all of the internal logging to the specified file.")
 	flag.StringVar(&opts.Output.OutputDirectory, "od", opts.Output.OutputDirectory, "Directory path to store matched results to.")
@@ -163,6 +170,10 @@ func main() {
 	var err, optserr error
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	// Capture a single start-time used for any auto-generated default
+	// filenames (output, debug log) so that they remain stable across the
+	// lifetime of the process (pause / interactive / resume reuse them).
+	startTime := time.Now()
 	// prepare the default config options from default config file
 	var opts *ffuf.ConfigOptions
 	opts, optserr = ffuf.ReadDefaultConfig()
@@ -202,6 +213,16 @@ func main() {
 		fmt.Printf("ffuf version: %s\n", ffuf.Version())
 		os.Exit(0)
 	}
+
+	// If the user did not supply -debug-log, derive a default name from
+	// the URL slug and start time so error logs are always captured.
+	// This must run AFTER potential config-file / -request handling has
+	// populated opts.HTTP.URL. We fall back to a blank URL slug if none
+	// was provided yet (e.g. -request-only configs); ConfigFromOptions
+	// will report missing -u in that case anyway.
+	if opts.Output.DebugLog == "" {
+		opts.Output.DebugLog = ffuf.AutoDebugLogFilename(opts.HTTP.URL, startTime)
+	}
 	if len(opts.Output.DebugLog) != 0 {
 		f, err := os.OpenFile(opts.Output.DebugLog, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
@@ -239,6 +260,40 @@ func main() {
 		Usage()
 		fmt.Fprintf(os.Stderr, "Encountered error(s): %s\n", err)
 		os.Exit(1)
+	}
+
+	// Pin the start time on the config so downstream code (output writer,
+	// auto-naming, audit log) all share the same clock anchor.
+	conf.StartTime = startTime
+	conf.Debuglog = opts.Output.DebugLog
+
+	// If the user did not supply -o, derive a default output filename from
+	// the URL slug and start time. We do this after ConfigFromOptions so
+	// the URL is final (raw-request mode populates Url from the file). The
+	// filename is generated once and stays the same across pause / resume
+	// / interactive mode so the same file is overwritten on each periodic
+	// save. ConfigFromOptions only copies OutputFormat into conf when
+	// OutputFile is non-empty, so we also have to mirror it here in the
+	// auto case (default "json").
+	if conf.OutputFile == "" {
+		fmtOut := opts.Output.OutputFormat
+		if fmtOut == "" {
+			fmtOut = "json"
+		}
+		validFormats := []string{"all", "json", "ejson", "html", "md", "csv", "ecsv"}
+		found := false
+		for _, f := range validFormats {
+			if f == fmtOut {
+				found = true
+				break
+			}
+		}
+		if !found {
+			fmt.Fprintf(os.Stderr, "Unknown output file format (-of): %s, defaulting to json\n", fmtOut)
+			fmtOut = "json"
+		}
+		conf.OutputFormat = fmtOut
+		conf.OutputFile = ffuf.AutoOutputFilename(conf.Url, startTime, conf.OutputFormat)
 	}
 
 	job, err := prepareJob(conf)
@@ -411,6 +466,38 @@ func SetupFilters(parseOpts *ffuf.ConfigOptions, conf *ffuf.Config) error {
 	}
 	if conf.IgnoreBody && warningIgnoreBody {
 		fmt.Printf("*** Warning: possible undesired combination of -ignore-body and the response options: fl,fs,fw,ml,ms and mw.\n")
+	}
+
+	// WAF / rate-limit detector matchers (independent from result matchers)
+	if conf.WAFMatchers == nil {
+		conf.WAFMatchers = make(map[string]ffuf.FilterProvider)
+	}
+	type wafMatcherSpec struct {
+		name  string
+		flag  string
+		value string
+	}
+	wafSpecs := []wafMatcherSpec{
+		{"status", "wmc", parseOpts.General.WAFCodes},
+		{"size", "wms", parseOpts.General.WAFSize},
+		{"word", "wmw", parseOpts.General.WAFWords},
+		{"line", "wml", parseOpts.General.WAFLines},
+		{"regexp", "wmr", parseOpts.General.WAFRegexp},
+	}
+	for _, spec := range wafSpecs {
+		if spec.value == "" {
+			continue
+		}
+		fp, ferr := filter.NewFilterByName(spec.name, spec.value)
+		if ferr != nil {
+			errs.Add(fmt.Errorf("WAF detector (-%s): %s", spec.flag, ferr.Error()))
+			continue
+		}
+		conf.WAFMatchers[spec.name] = fp
+	}
+	if len(conf.WAFMatchers) > 0 && len(conf.WAFTimes) == 0 {
+		// Should be handled in ConfigFromOptions, but be defensive
+		conf.WAFTimes = []int{30, 60, 120}
 	}
 	return errs.ErrorOrNil()
 }

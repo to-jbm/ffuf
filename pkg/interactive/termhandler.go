@@ -37,6 +37,10 @@ func (i *interactive) handleInput(in []byte) {
 		// Enter pressed - toggle interactive state
 		i.paused = !i.paused
 		if i.paused {
+			// Reset any in-progress WAF/rate-limit backoff so the user is not
+			// kept waiting for a long sleep before being able to interact, and
+			// so subsequent triggers start fresh from the first ladder step.
+			i.Job.CancelWAFBackoff()
 			i.Job.Pause()
 			time.Sleep(500 * time.Millisecond)
 			i.printBanner()
