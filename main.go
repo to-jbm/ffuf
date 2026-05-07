@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -240,6 +241,8 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Could not create default output directory %q: %s\n", ffuf.DefaultOutputDir, err)
 			os.Exit(1)
 		}
+		// Copy dashboard panel.py to output directory for user convenience
+		copyPanelToOutputDir()
 	}
 
 	// If the user did not supply -debug-log, derive a default name from
@@ -535,4 +538,44 @@ func printSearchResults(conf *ffuf.Config, pos int, exectime time.Time, hash str
 	fmt.Printf("-------------------------------------------\n")
 	fmt.Printf("ffuf job started at: %s\n\n", exectime.Format(time.RFC3339))
 	fmt.Printf("%s\n", string(rawreq))
+}
+
+// copyPanelToOutputDir copies panel.py from the ffuf binary directory to the
+// output directory (ffuf_out/) so users can easily launch the web dashboard.
+// If the source file doesn't exist or copy fails, the error is logged but
+// does not stop the scan.
+func copyPanelToOutputDir() {
+	// Determine source: look next to the binary, then in working directory
+	exePath, err := os.Executable()
+	if err != nil {
+		return
+	}
+	sourceDir := filepath.Dir(exePath)
+	sourceFile := filepath.Join(sourceDir, "panel.py")
+
+	// Fallback to current working directory if not found next to binary
+	if _, err := os.Stat(sourceFile); os.IsNotExist(err) {
+		wd, _ := os.Getwd()
+		sourceFile = filepath.Join(wd, "panel.py")
+		if _, err := os.Stat(sourceFile); os.IsNotExist(err) {
+			return // panel.py not found, skip silently
+		}
+	}
+
+	destFile := filepath.Join(ffuf.DefaultOutputDir, "panel.py")
+
+	// Read source
+	data, err := os.ReadFile(sourceFile)
+	if err != nil {
+		log.Printf("Could not read panel.py: %s", err)
+		return
+	}
+
+	// Write destination (overwrite if exists to ensure latest version)
+	if err := os.WriteFile(destFile, data, 0755); err != nil {
+		log.Printf("Could not copy panel.py to output dir: %s", err)
+		return
+	}
+
+	log.Printf("Dashboard copied to: %s", destFile)
 }
