@@ -381,6 +381,7 @@ func (s *Stdoutput) Result(resp ffuf.Response) {
 		Duration:         resp.Duration,
 		ResultFile:       resp.ResultFile,
 		Host:             resp.Request.Host,
+		Proxy:            resp.Proxy,
 	}
 	s.resultsMu.Lock()
 	s.CurrentResults = append(s.CurrentResults, sResult)
@@ -484,6 +485,22 @@ func (s *Stdoutput) resultQuiet(res ffuf.Result) {
 	fmt.Println(s.prepareInputsOneLine(res))
 }
 
+func stripProxyCredentials(proxyURL string) string {
+	if proxyURL == "" {
+		return ""
+	}
+	// Parse URL and return scheme://host:port only (no user:pass)
+	if idx := strings.LastIndex(proxyURL, "://"); idx != -1 {
+		scheme := proxyURL[:idx+3]
+		remainder := proxyURL[idx+3:]
+		// Remove user:pass@ if present
+		if atIdx := strings.LastIndex(remainder, "@"); atIdx != -1 {
+			return scheme + remainder[atIdx+1:]
+		}
+	}
+	return proxyURL
+}
+
 func (s *Stdoutput) resultMultiline(res ffuf.Result) {
 	var res_hdr, res_str string
 	res_str = "%s%s    * %s: %s\n"
@@ -498,6 +515,9 @@ func (s *Stdoutput) resultMultiline(res ffuf.Result) {
 	}
 	if res.ResultFile != "" {
 		reslines = fmt.Sprintf("%s%s| RES | %s\n", reslines, TERMINAL_CLEAR_LINE, res.ResultFile)
+	}
+	if res.Proxy != "" {
+		reslines = fmt.Sprintf("%s%s| PROXY | %s\n", reslines, TERMINAL_CLEAR_LINE, stripProxyCredentials(res.Proxy))
 	}
 	for _, k := range s.fuzzkeywords {
 		if ffuf.StrInSlice(k, s.config.CommandKeywords) {
@@ -520,7 +540,11 @@ func (s *Stdoutput) resultMultiline(res ffuf.Result) {
 }
 
 func (s *Stdoutput) resultNormal(res ffuf.Result) {
-	resnormal := fmt.Sprintf("%s%s%-23s [Status: %d, Size: %d, Words: %d, Lines: %d, Duration: %dms]%s", TERMINAL_CLEAR_LINE, s.colorize(res.StatusCode), s.prepareInputsOneLine(res), res.StatusCode, res.ContentLength, res.ContentWords, res.ContentLines, res.Duration.Milliseconds(), ANSI_CLEAR)
+	proxyInfo := ""
+	if res.Proxy != "" {
+		proxyInfo = fmt.Sprintf(" [Proxy: %s]", stripProxyCredentials(res.Proxy))
+	}
+	resnormal := fmt.Sprintf("%s%s%-23s [Status: %d, Size: %d, Words: %d, Lines: %d, Duration: %dms]%s%s", TERMINAL_CLEAR_LINE, s.colorize(res.StatusCode), s.prepareInputsOneLine(res), res.StatusCode, res.ContentLength, res.ContentWords, res.ContentLines, res.Duration.Milliseconds(), ANSI_CLEAR, proxyInfo)
 	fmt.Println(resnormal)
 }
 

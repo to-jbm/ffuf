@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/flate"
 	"compress/gzip"
+	"context"
 	"crypto/tls"
 	"fmt"
 	"io"
@@ -22,6 +23,9 @@ import (
 	"github.com/andybalholm/brotli"
 )
 
+// proxyContextKey is used to store/retrieve the proxy URL in request context
+type proxyContextKey struct{}
+
 // Download results < 5MB
 const MAX_DOWNLOAD_SIZE = 5242880
 
@@ -37,15 +41,31 @@ func NewSimpleRunner(conf *ffuf.Config, replay bool) ffuf.RunnerProvider {
 
 	if replay {
 		customProxy = conf.ReplayProxyURL
+	} else if len(conf.Proxies) > 0 {
+		// Using rotating proxies - dynamic selection handled per request
+		// The proxy is selected and stored in request context for retrieval
+		proxyURL = func(req *http.Request) (*url.URL, error) {
+			proxy := conf.NextProxy()
+			if proxy == "" {
+				return http.ProxyFromEnvironment(req)
+			}
+			// Store the selected proxy in the request context
+			ctx := context.WithValue(req.Context(), proxyContextKey{}, proxy)
+			*req = *req.WithContext(ctx)
+			return url.Parse(proxy)
+		}
 	} else {
 		customProxy = conf.ProxyURL
 	}
-	if len(customProxy) > 0 {
+	
+	// For single proxy (not rotating), set it statically
+	if len(customProxy) > 0 && len(conf.Proxies) == 0 {
 		pu, err := url.Parse(customProxy)
 		if err == nil {
 			proxyURL = http.ProxyURL(pu)
 		}
 	}
+	
 	cert := []tls.Certificate{}
 
 	if conf.ClientCert != "" && conf.ClientKey != "" {
@@ -210,6 +230,15 @@ func (r *SimpleRunner) Execute(req *ffuf.Request) (ffuf.Response, error) {
 	resp.ContentLines = int64(linesSize)
 	resp.Duration = firstByteTime
 	resp.Timestamp = start.Add(firstByteTime)
+	
+	// Record the proxy used for this request
+	// Check context first (for -proxies rotating mode)
+	if proxyVal := httpreq.Context().Value(proxyContextKey{}); proxyVal != nil {
+		resp.Proxy = proxyVal.(string)
+	} else if len(r.config.Proxies) == 0 && r.config.ProxyURL != "" {
+		// For single -x proxy, record it directly
+		resp.Proxy = r.config.ProxyURL
+	}
 
 	return resp, nil
 }

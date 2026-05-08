@@ -77,6 +77,7 @@ type GeneralOptions struct {
 	WAFRegexp                 string   `json:"waf_regexp"`
 	WAFTime                   string   `json:"waf_time"`
 	WAFThreshold              int      `json:"waf_threshold"`
+	ProxiesFile               string   `json:"proxies_file"`
 }
 
 type InputOptions struct {
@@ -162,6 +163,7 @@ func NewConfigOptions() *ConfigOptions {
 	c.General.WAFRegexp = ""
 	c.General.WAFTime = ""
 	c.General.WAFThreshold = 10
+	c.General.ProxiesFile = ""
 	c.HTTP.Data = ""
 	c.HTTP.FollowRedirects = false
 	c.HTTP.IgnoreBody = false
@@ -601,6 +603,18 @@ func ConfigFromOptions(parseOpts *ConfigOptions, ctx context.Context, cancel con
 		conf.WAFTimes = []int{30, 60, 120}
 	}
 
+	// Load rotating proxy list from -proxies file
+	if parseOpts.General.ProxiesFile != "" {
+		proxies, perr := loadProxiesFile(parseOpts.General.ProxiesFile)
+		if perr != nil {
+			errs.Add(fmt.Errorf("Proxies file (-proxies): %s", perr.Error()))
+		} else if len(proxies) == 0 {
+			errs.Add(fmt.Errorf("Proxies file (-proxies): no valid proxies found in %s", parseOpts.General.ProxiesFile))
+		} else {
+			conf.Proxies = proxies
+		}
+	}
+
 	// Check that fmode and mmode have sane values
 	valid_opmodes := []string{"and", "or"}
 	fmode_found := false
@@ -837,4 +851,60 @@ func ReadDefaultConfig() (*ConfigOptions, error) {
 		}
 	}
 	return ReadConfig(conffile)
+}
+
+// loadProxiesFile reads a file containing proxy URLs (one per line) and
+// returns a slice of validated proxy URLs. Empty lines and lines starting
+// with # are ignored. Each proxy is validated to have a valid scheme
+// (http, https, or socks5).
+//
+// Supported formats:
+//   - ip:port
+//   - scheme://ip:port
+//   - scheme://username:password@ip:port
+//   - username:password@ip:port (http assumed)
+func loadProxiesFile(path string) ([]string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	proxies := []string{}
+	for lineNum, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// Check if line already has a valid scheme
+		hasValidScheme := false
+		if strings.Contains(line, "://") {
+			u, _ := url.Parse(line)
+			if u != nil && (u.Scheme == "http" || u.Scheme == "https" || u.Scheme == "socks5") {
+				hasValidScheme = true
+			}
+		}
+
+		// If no valid scheme, prepend http://
+		proxyURL := line
+		if !hasValidScheme {
+			proxyURL = "http://" + line
+		}
+
+		// Parse and validate the final URL
+		u, perr := url.Parse(proxyURL)
+		if perr != nil {
+			return nil, fmt.Errorf("line %d: invalid proxy URL %q", lineNum+1, line)
+		}
+		if u.Host == "" {
+			return nil, fmt.Errorf("line %d: proxy URL missing host %q", lineNum+1, line)
+		}
+		if u.Scheme != "http" && u.Scheme != "https" && u.Scheme != "socks5" {
+			return nil, fmt.Errorf("line %d: unsupported proxy scheme %q (use http, https, or socks5)", lineNum+1, u.Scheme)
+		}
+
+		proxies = append(proxies, proxyURL)
+	}
+
+	return proxies, nil
 }
