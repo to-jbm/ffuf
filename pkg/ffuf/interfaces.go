@@ -117,4 +117,6 @@ type Result struct {
 	ResultFile       string              `json:"resultfile"`
 	Host             string              `json:"host"`
 	HTMLColor        string              `json:"-"`
+	// Proxy is the proxy URL used for this request (when using -proxies rotation)
+	Proxy string `json:"proxy,omitempty"`
 }

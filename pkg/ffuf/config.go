@@ -74,6 +74,12 @@ type Config struct {
 	WAFMatchers  map[string]FilterProvider `json:"-"`
 	WAFTimes     []int                     `json:"waf_times"`
 	WAFThreshold int                       `json:"waf_threshold"`
+	// Proxies is a list of proxy URLs loaded from -proxies file for round-robin
+	// rotation. Each request uses the next proxy in sequence, wrapping to the
+	// start when the end is reached.
+	Proxies []string `json:"proxies"`
+	// proxyIndex is the next proxy to use (atomic, round-robin counter).
+	proxyIndex int64
 	// StartTime is the wall-clock time at which the ffuf process was launched.
 	// It is used to derive the default output and debug-log filenames so that
 	// the same files are reused across pause / interactive / resume.
@@ -131,6 +137,17 @@ func (c *Config) SetLastProcessedPosition(pos int) {
 			return
 		}
 	}
+}
+
+// NextProxy returns the next proxy URL for round-robin rotation using the
+// proxies loaded from -proxies file. If no proxies are configured, it
+// returns the single ProxyURL (or empty if none). Safe for concurrent use.
+func (c *Config) NextProxy() string {
+	if len(c.Proxies) == 0 {
+		return c.ProxyURL
+	}
+	idx := atomic.AddInt64(&c.proxyIndex, 1) - 1
+	return c.Proxies[int(idx)%len(c.Proxies)]
 }
 
 // GetLastProcessedPosition returns LastProcessedPosition with an atomic load.

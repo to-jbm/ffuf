@@ -232,11 +232,14 @@ func (r *SimpleRunner) Execute(req *ffuf.Request) (ffuf.Response, error) {
 	resp.Timestamp = start.Add(firstByteTime)
 	
 	// Record the proxy used for this request
-	// Check context first (for -proxies rotating mode)
-	if proxyVal := httpreq.Context().Value(proxyContextKey{}); proxyVal != nil {
-		resp.Proxy = proxyVal.(string)
-	} else if len(r.config.Proxies) == 0 && r.config.ProxyURL != "" {
-		// For single -x proxy, record it directly
+	// Check context first (for -proxies rotating mode) - use httpresp.Request which has the modified context
+	if httpresp != nil && httpresp.Request != nil {
+		if proxyVal := httpresp.Request.Context().Value(proxyContextKey{}); proxyVal != nil {
+			resp.Proxy = proxyVal.(string)
+		}
+	}
+	// If not found in context and using single -x proxy, use that
+	if resp.Proxy == "" && len(r.config.Proxies) == 0 && r.config.ProxyURL != "" {
 		resp.Proxy = r.config.ProxyURL
 	}
 

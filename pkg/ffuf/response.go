@@ -22,6 +22,8 @@ type Response struct {
 	ScraperData   map[string][]string
 	Duration      time.Duration
 	Timestamp     time.Time
+	// Proxy is the proxy URL used for this request (when using -proxies rotation)
+	Proxy string `json:"proxy,omitempty"`
 }
 
 // GetRedirectLocation returns the redirect location for a 3xx redirect HTTP response

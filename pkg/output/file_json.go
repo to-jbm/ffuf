@@ -39,6 +39,7 @@ type JsonResult struct {
 	ResultFile       string              `json:"resultfile"`
 	Url              string              `json:"url"`
 	Host             string              `json:"host"`
+	Proxy            string              `json:"proxy,omitempty"`
 }
 
 type jsonFileOutput struct {
@@ -95,6 +96,7 @@ func writeJSON(filename string, config *ffuf.Config, res []ffuf.Result) error {
 			ResultFile:       r.ResultFile,
 			Url:              r.Url,
 			Host:             r.Host,
+			Proxy:            r.Proxy,
 		})
 	}
 	outJSON := jsonFileOutput{

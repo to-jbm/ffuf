@@ -663,12 +663,8 @@ HTML_TEMPLATE = '''
                     <div class="info-label">Target:</div>
                     <div class="info-value" id="detailUrl"></div>
                 </div>
-                <div class="info-row">
-                    <div class="info-label">Command:</div>
-                    <div class="info-value" style="font-family: monospace; font-size: 12px; word-break: break-all;" id="detailCmd"></div>
-                </div>
                 <div class="info-row" id="fullCmdRow">
-                    <div class="info-label">Full Pipeline:</div>
+                    <div class="info-label">Full Command:</div>
                     <div class="info-value">
                         <div class="full-command" id="detailFullCmd"></div>
                     </div>
@@ -813,11 +809,14 @@ HTML_TEMPLATE = '''
                     document.getElementById('detailTitle').textContent = data.url || 'Scan Details';
                     document.getElementById('detailMeta').textContent = data.filename + ' • ' + (data.time || '');
                     document.getElementById('detailUrl').textContent = data.url || 'Unknown';
-                    document.getElementById('detailCmd').textContent = data.commandline || '';
                     document.getElementById('detailResults').textContent = data.result_count || 0;
                     
-                    if (data.full_command) {
-                        document.getElementById('detailFullCmd').textContent = data.full_command;
+                    if (data.commandline || data.full_command) {
+                        cmd = data.full_command ? data.full_command : data.commandline;
+                        if(!cmd.includes(data.commandline)) {
+                            cmd = cmd + ' | ' + data.commandline;
+                        }
+                        document.getElementById('detailFullCmd').textContent = cmd;
                         document.getElementById('fullCmdRow').style.display = 'flex';
                     } else {
                         document.getElementById('fullCmdRow').style.display = 'none';
@@ -865,11 +864,11 @@ HTML_TEMPLATE = '''
             filteredResults = allResults.filter(r => {
                 if (hiddenIds.has(r.id)) return false;
                 
-                if (filters.position && !String(r.position).includes(filters.position)) return false;
-                if (filters.status && !String(r.status).includes(filters.status)) return false;
-                if (filters.length && !String(r.length).includes(filters.length)) return false;
-                if (filters.words && !String(r.words).includes(filters.words)) return false;
-                if (filters.lines && !String(r.lines).includes(filters.lines)) return false;
+                if (filters.position && String(r.position) != (filters.position)) return false;
+                if (filters.status && String(r.status) != (filters.status)) return false;
+                if (filters.length && String(r.length) != (filters.length)) return false;
+                if (filters.words && String(r.words) != (filters.words)) return false;
+                if (filters.lines && String(r.lines) != (filters.lines)) return false;
                 if (filters.duration && !formatDuration(r.duration).toLowerCase().includes(filters.duration)) return false;
                 if (filters.url && !r.url.toLowerCase().includes(filters.url)) return false;
                 
@@ -922,13 +921,13 @@ HTML_TEMPLATE = '''
             
             let html = '<table class="data-table"><thead><tr>';
             html += '<th class="col-checkbox"><input type="checkbox" id="selectAllHeader" onchange="toggleSelectAll()"></th>';
-            html += '<th class="col-position" onclick="sortResults(\'position\')">Position <span class="sort-icon">↕</span></th>';
-            html += '<th class="col-status" onclick="sortResults(\'status\')">Status <span class="sort-icon">↕</span></th>';
-            html += '<th class="col-length" onclick="sortResults(\'length\')">Length <span class="sort-icon">↕</span></th>';
-            html += '<th class="col-words" onclick="sortResults(\'words\')">Words <span class="sort-icon">↕</span></th>';
-            html += '<th class="col-lines" onclick="sortResults(\'lines\')">Lines <span class="sort-icon">↕</span></th>';
-            html += '<th class="col-duration" onclick="sortResults(\'duration\')">Duration <span class="sort-icon">↕</span></th>';
-            html += '<th class="col-url" onclick="sortResults(\'url\')">URL <span class="sort-icon">↕</span></th>';
+            html += '<th class="col-position" onclick="sortResults(\\\'position\\\')">Position <span class="sort-icon">↕</span></th>';
+            html += '<th class="col-status" onclick="sortResults(\\\'status\\\')">Status <span class="sort-icon">↕</span></th>';
+            html += '<th class="col-length" onclick="sortResults(\\\'length\\\')">Length <span class="sort-icon">↕</span></th>';
+            html += '<th class="col-words" onclick="sortResults(\\\'words\\\')">Words <span class="sort-icon">↕</span></th>';
+            html += '<th class="col-lines" onclick="sortResults(\\\'lines\\\')">Lines <span class="sort-icon">↕</span></th>';
+            html += '<th class="col-duration" onclick="sortResults(\\\'duration\\\')">Duration <span class="sort-icon">↕</span></th>';
+            html += '<th class="col-url" onclick="sortResults(\\\'url\\\')">URL <span class="sort-icon">↕</span></th>';
             html += '<th class="col-input">Input</th>';
             html += '</tr></thead><tbody>';
             
@@ -957,7 +956,7 @@ HTML_TEMPLATE = '''
                 html += '<td>' + r.length.toLocaleString() + '</td>';
                 html += '<td>' + r.words + '</td>';
                 html += '<td>' + r.lines + '</td>';
-                html += '<td>' + formatDuration(r.duration) + '</td>';
+                html += '<td>' + (r.duration/1000000).toFixed(2) + 's</td>';
                 html += '<td class="url-cell"><a href="' + escapeHtml(r.url) + '" target="_blank">' + escapeHtml(r.url) + '</a></td>';
                 html += '<td class="input-cell">' + inputHtml + '</td>';
                 html += '</tr>';

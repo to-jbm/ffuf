@@ -120,6 +120,9 @@ func (s *Stdoutput) Banner() {
 	if len(s.config.ProxyURL) > 0 {
 		printOption([]byte("Proxy"), []byte(s.config.ProxyURL))
 	}
+	if len(s.config.Proxies) > 0 {
+		printOption([]byte("Proxies"), []byte(fmt.Sprintf("%d rotating", len(s.config.Proxies))))
+	}
 	if len(s.config.ReplayProxyURL) > 0 {
 		printOption([]byte("ReplayProxy"), []byte(s.config.ReplayProxyURL))
 	}
